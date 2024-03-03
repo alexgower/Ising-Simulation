@@ -1,5 +1,7 @@
 function cube = f0()
 
-cube = ones(1,12);
+% Trivially this creates a ferromagnetic subproblem unit cell C
+
+cube = ones(1,12); 
 
 end

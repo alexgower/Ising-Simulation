@@ -1,147 +1,307 @@
 function [Ebest,tt,step,conf,state] = mem(vars,falgo,Esol,W,fRBM,T,conf,monitor)
 
-% load
+% Monitor = [quiet, record, save] boolean (0/1 values)
+% Extract quiet and record boolean variables from monitor
 quiet = monitor(1); record = monitor(2);
-fp = falgo(1)==2.5; fd = falgo(2);
+
+% fp = if true then plaquette based memory, if false then bond based memory
+fp = falgo(1)==2.5; % MAYBE why is this 2.5?
+% fd = boolean value = 0/1 = single/double precision for W later
+fd = falgo(2);
+
+
+%% Non-RBM case
 if ~fRBM
-sz = size(W); sz = sz(1:end-1); 
-d = length(sz); N = prod(sz);
-alpha = vars(1); beta = vars(2); gamma = vars(3); delta = vars(4); zeta = vars(5);
-xini = vars(6); t0 = floor(2^vars(7)); dtlist = 2.^[-5 vars(8)];
+
+    % sz = (n,m,k,12) etc for 3d, this sets sz = (n,m,k) for 3d etc
+    sz = size(W); sz = sz(1:end-1); 
+
+    % d = dimension of lattice, N = number of spins in lattice
+    d = length(sz); N = prod(sz);
+
+    % Extract memory dynamics variables from vars
+    alpha = vars(1); beta = vars(2); gamma = vars(3); delta = vars(4); zeta = vars(5);
+    xini = vars(6); 
+    t0 = floor(2^vars(7)); % t0 = 2^vars(7) rounded down to nearest integer
+    dtlist = 2.^[-5 vars(8)]; % dtlist = [2^-5, 2^vars(8)]
+
+
+%% RBM case - MAYBE later
 else
-sz = size(W); n = sz(1); m = sz(2); W = W/max(abs(W(:)));
-d = Inf; N = sum(sz);
-alpha = vars(1); beta = vars(2); gamma = vars(3); delta = vars(4); zeta = vars(5);
-xini = vars(6); t0 = floor(2^vars(7)); dtlist = 2.^[-5 vars(8)];
+
+    sz = size(W); n = sz(1); m = sz(2); W = W/max(abs(W(:)));
+    d = Inf; N = sum(sz);
+    alpha = vars(1); beta = vars(2); gamma = vars(3); delta = vars(4); zeta = vars(5);
+    xini = vars(6); t0 = floor(2^vars(7)); dtlist = 2.^[-5 vars(8)];
+
 end
+
+
+% Convert W to single precision if fd = 0 (i.e. not double precision)
 if ~fd
     W = single(W);
 end
+
+% dd is an effective dimension parameter used for plaquette based memory - MAYBE - understand what this does later
 dd = 8*d-12;
 
+% Probably just validation that memory initial value xini and restart time t0 are positive - CHECK
 if xini < 0 || t0 <= 0
     Ebest = -Esol; tt = Inf; state = 0;
     return;
 end
-dt0 = 2^-5; nr = ceil(T/t0); T = t0*nr;
 
-% initialize
+
+dt0 = 2^-5; % DELETE?
+
+% Number of restarts = ceil(total simulation time/time per restart)
+nr = ceil(T/t0); 
+% Total simulation time = number of restarts * time per restart (which has been made an integer by rounding down to nearest integer earlier)
+T = t0*nr;
+
+
+
+%% INITIALISE SPIN CONFIGURATION
+% Create checkboard instance with shade 0 in case we use plaquette based memory - MAYBE - understand what this does
 check = checkerboard(sz,0);
+
+% If no configuration is provided, initialize v, X, Y with random values
 if isempty(conf)
-if ~fRBM
-v = double(-1+2*round(rand(sz,'single')));
-if ~fp
-X = xini*ones([sz 2*d]);
-Y = ones([sz 2*d]);
+
+    % Non-RBM case
+    if ~fRBM
+
+    % Initialise spins at all vectors v in the lattice with random values -1 or 1
+    v = double(-1+2*round(rand(sz,'single')));
+
+
+        % Bond based memory case
+        if ~fp
+
+            % Set all x values to xini, and all y values to 1
+            % Note X and Y are (n,m,k,6) etc for 3d i.e. 6 bond values for each spin in a 3d cubic lattice
+            X = xini*ones([sz 2*d]);
+            Y = ones([sz 2*d]);
+
+
+        % Plaquette based memory case - MAYBE - understand what this does later
+        else
+            
+            X = xini*ones([sz dd]).*check;
+            Y = check;
+
+            zeta = zeta*check;
+        end
+
+    % RBM case - MAYBE - understand what this does later
+    else
+
+        v = double(-1 + 2*round(rand([1 n+m],'single')));
+        X = xini*ones([n m],'single');
+        X = double(X.*logical(W)); 
+        Y = double(logical(W));
+
+    end
+
+
+% If a configuration IS provided, assign v, X, Y to the values in the provided configuration
 else
-X = xini*ones([sz dd]).*check;
-Y = check;
-zeta = zeta*check;
+    v = conf{1}; X = conf{2}; Y = conf{3};
 end
-else
-v = double(-1 + 2*round(rand([1 n+m],'single')));
-X = xini*ones([n m],'single');
-X = double(X.*logical(W)); 
-Y = double(logical(W));
-end
-else
-v = conf{1}; X = conf{2}; Y = conf{3};
-end
+
+
+% If not double precision, convert v, X, Y to single precision
 if ~fd
-v = single(v); X = single(X); Y = single(Y);
+    v = single(v); X = single(X); Y = single(Y);
 end
 
-% monitor
+
+
+
+
+
+
+
+%% MONITORING SECTION 
 Ebest = 0; flag = 0;
-if record
-state = struct;
-ttlist = unique(round(geoseries(1,(T),10*round(log2(T))))); rrecs = length(ttlist);
-rlist = unique(round(geoseries(1,nr,10*round(log2(nr))))); nrl = length(rlist);
-state.tlist = rlist*t0;
 
-state.Et = zeros([1 rrecs]);
-state.Eb = zeros([1 rrecs]);
-state.bclus = zeros([1 N nrl]);
+%% INITIAL RECORDING SECTION
+if record
+    % Create a state struct to store record
+    state = struct;
+
+    %% Energy recording
+
+    ttlist = unique(round(geoseries(1,(T),10*round(log2(T))))); % Create list of total times at which to record
+    rrecs = length(ttlist); % Get total number of recordings to be made (rr as over all restarts)
+
+    state.Et = zeros([1 rrecs]); % Create empty array to store energy (density) difference values at each recording time
+    state.Eb = zeros([1 rrecs]); % Create empty array to store best energy (density) values at each recording time
+
+
+    %% Bond cluster recording
+
+    rlist = unique(round(geoseries(1,nr,10*round(log2(nr))))); % Create list of restarts at which to record bond cluster values
+    nrl = length(rlist); % Get total number of restarts in which to record
+    state.tlist = rlist*t0; % Get list of restart start times for restarts in which recordings will take place
+
+    % Create empty array to store bond cluster values at each recording time
+    % N generates a dimension from 1:N of all possible bond cluster sizes bg
+    % nrl generates a dimension from 1:nrl for each restart
+    state.bclus = zeros([1 N nrl]); 
 else
-state = 0;
+    state = 0; % If no recording, set state to 0
 end
 
+
+%%% MAIN SIMULATION SECTION
+% tt = total time over all restarts, step = total number of steps over all restarts
 tt = 0; step = 0; 
+
+% Loop over restarts
 for r = 1:nr
     
-% memory flip
-if ~fRBM
-if r > 1
-if ~fp
-[list,~,~] = get_bclus(get_ww(X),1); 
-else
-[list,~,~] = get_bclus(wp_to_w(X,check,0),1); 
-end
-if list
-v(list) = -v(list);
-end
-end
+    %% MEMORY FLIP (SW)
+    % On a restart, do a SW cluster update based on clusters formed from rounded X (bond memory) values
+    % Only for non-RBM case
+    if ~fRBM
+        % Only if at least one restart has already been done
+        if r > 1
+
+            % Bond-based memory case
+            if ~fp
+                % Get list of spins to flip from SW algorithm (hence 1 in get_bclus call)
+                % i.e. finds clusters based on active bonds (via rounding of X to 0 or 1) and flips them with probability 0.5
+                [list,~,~] = get_bclus(get_ww(X),1); 
+
+            % Plaquette-based memory case - MAYBE - understand what this does later
+            else
+                [list,~,~] = get_bclus(wp_to_w(X,check,0),1); 
+            end
+
+            % Flip the spins in the list
+            if list
+                v(list) = -v(list);
+            end
+
+        end
+    end
+
+    % t = time over current restart
+    t = 0; 
+
+    % Only allow time within restart time t0
+    while t < t0
+
+        %%% GRADIENT
+        % Get rounded Ising energy E,
+        % C matrix value (affects memory), 
+        % G matrix value (affects continuised spins) 
+        % from local gradient descent on Hamiltonian
+        [E,C,G] = get_L(v,X,W,fp,check,alpha,beta,fRBM);
+
+        % Update Ebest 
+        % and flag (i.e. decide whether to break out of the loop for this restart after this time step or not)
+        [Ebest,flag] = breakout(E,Ebest,Esol,record);
+
+        % Adjust stepsize dt inversely proportional to the maximum absolute value of G (i.e. how fast continuised spin values v are changing)
+        % With cutoffs at 2^-5 and 2^vars(8)
+        dt = bound( 1/max(abs(G(:))) , dtlist);
+
+        %%% UPDATE
+
+        % Update continuised spins v but keep them within the range -1 to 1
+        v = min(max( v+dt*G ,-1),1);
+
+        % Non-RBM case
+        if ~fRBM
+            % Bond-based memory case
+            if ~fp 
+                % Update memory values X but keep them within the range 0.01 to 1
+                X = min(max( X+dt*(gamma*C-Y) ,0.01),1);
+                % Update long term memory values Y but keep them within the range 1 to 10
+                Y = min(max( Y+dt*(delta*X-zeta), 1),10);
+
+            % Plaquette-based memory case - MAYBE understand what this does later
+            else
+                X = min(max( X+dt*(gamma*C-Y) ,0.01*check),check);
+                Y = min(max( Y+dt*(delta*sum(X,d+1)-zeta), check),dd*check);
+            end
+
+        % RBM case - has same memory and long term memory updates as non-RBM case but no plaquette based memory option
+        else
+            X = min(max( X+dt*(gamma*C-Y) ,0.01),1);
+            Y = min(max( Y+dt*(delta*X-zeta), 1),10);
+        end
+
+        %%% RECORD
+        if record
+            % If time step is changing into a new integer value and this value is in the totaltime record list ttlist then record
+            if (floor(t+dt)>floor(t)) && ismember(floor(tt+dt),ttlist) 
+                rrec = find(ttlist == floor(tt+dt),1,'first'); % Record index value (first index in ttlist equal to floor(tt+dt))
+                state.Et(rrec) = (Esol-E)/N; % Record energy (density) difference at this time
+                state.Eb(rrec) = -Ebest/N; % Record best energy (density) at this time
+            end
+
+            % If the restart number is in the record list rlist of restart values in which to record cluster values
+            if ismember(r,rlist)
+                rec = find(rlist == r,1,'first'); % 'Other' record index value (first index in rlist equal to r)
+
+                % tlist = [tlist t]; vt = [vt v(1)]; xt = [xt X(1)]; - DELETE?
+                
+                if floor(t+dt) > floor(t) % If time step is changing into a new integer value
+
+                    if ~fp % Bond-based memory case
+                    
+                        % Note that get_ww(X) converts a (n,m,k,6) array of bond memory values to a (n,m,k,3) array of bond memory values 
+                        % (for 3D etc) (so get_bclus() doesn't double count bonds)
+                        % get_bclus() returns bond cluster information (for active bonds formed from +random then rounded bond memory X values)
+                        % bg = list of bond cluster sizes, b = corresponding list of number of bond clusters of this size
+                        [~,b,bg] = get_bclus(get_ww(X),0); 
+                    
+                    else % Plaquette-based memory case - MAYBE understand what this does later
+                    
+                        [~,b,bg] = get_bclus(wp_to_w(X,check,0),0);   
+                    
+                    end
+
+                    % So long as there are non-trivial bond clusters
+                    if sum(b)
+                        % Add b (number of bond clusters of each size) to the bond cluster size values for this restart (rec)
+                        % Note that we another sampled b value whenever we enter a new integer timestep - CHECK why?
+                        state.bclus(1,bg,rec) = state.bclus(1,bg,rec) + b;
+                    end
+
+                end
+
+                % if t >= t0
+                % state.vspec(:,:,rec) = spec(vt,tlist,nt,dt0);
+                % state.xspec(:,:,rec) = spec(xt,tlist,nt,dt0);
+                % end
+
+            end
+        end
+
+        %% TIME AND STEP UPDATE
+        % Increase time within restart by dt, set total time over all restarts to tt, increase step count by one
+        t = t+dt; tt = (r-1)*t0+t; step = step+1;
+
+        %% PRINT
+        if ~quiet mydot(t,t0,dt,1); end
+        if flag break; end
+
+    end
+
+    %% More printing
+    if ~quiet
+        fprintf(strcat( '\n','t = ',num2str(floor(tt)),',  dE = ',num2str(Esol-Ebest),'\n' ));
+    end
+
+    if flag break; end
+
 end
 
-t = 0; 
-while t < t0
-
-% gradient
-[E,C,G] = get_L(v,X,W,fp,check,alpha,beta,fRBM);
-[Ebest,flag] = breakout(E,Ebest,Esol,record);
-dt = bound( 1/max(abs(G(:))) , dtlist);
-
-% update
-v = min(max( v+dt*G ,-1),1);
-if ~fRBM
-if ~fp
-X = min(max( X+dt*(gamma*C-Y) ,0.01),1);
-Y = min(max( Y+dt*(delta*X-zeta), 1),10);
-else
-X = min(max( X+dt*(gamma*C-Y) ,0.01*check),check);
-Y = min(max( Y+dt*(delta*sum(X,d+1)-zeta), check),dd*check);
-end
-else
-X = min(max( X+dt*(gamma*C-Y) ,0.01),1);
-Y = min(max( Y+dt*(delta*X-zeta), 1),10);
-end
-
-% record
-if record
-if (floor(t+dt)>floor(t)) && ismember(floor(tt+dt),ttlist) 
-rrec = find(ttlist == floor(tt+dt),1,'first');
-state.Et(rrec) = (Esol-E)/N;
-state.Eb(rrec) = -Ebest/N;
-end
-if ismember(r,rlist)
-rec = find(rlist == r,1,'first');
-% tlist = [tlist t]; vt = [vt v(1)]; xt = [xt X(1)];
-if floor(t+dt) > floor(t)
-if ~fp
-[~,b,bg] = get_bclus(get_ww(X),0);
-else
-[~,b,bg] = get_bclus(wp_to_w(X,check,0),0);   
-end
-if sum(b)
-state.bclus(1,bg,rec) = state.bclus(1,bg,rec) + b;
-end
-end
-% if t >= t0
-% state.vspec(:,:,rec) = spec(vt,tlist,nt,dt0);
-% state.xspec(:,:,rec) = spec(xt,tlist,nt,dt0);
-% end
-end
-end
-t = t+dt; tt = (r-1)*t0+t; step = step+1;
-
-% print
-if ~quiet mydot(t,t0,dt,1); end
-if flag break; end
-end
-if ~quiet
-    fprintf(strcat( '\n','t = ',num2str(floor(tt)),',  dE = ',num2str(Esol-Ebest),'\n' ));
-end
-if flag break; end
-end
+% Set current conf to v, X, Y
 conf = {v,X,Y};
+
 end
