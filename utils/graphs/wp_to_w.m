@@ -8,7 +8,6 @@ sz = sz(1:end-1);
 d = length(sz);
 
 % If check is not already a checkboard matrix, take 'check' as the 'shade' value and create a checkerboard matrix with it
-% TODO UNDERSTAND LATER
 if numel(check) == 1
     check = checkerboard(sz,check);
 end

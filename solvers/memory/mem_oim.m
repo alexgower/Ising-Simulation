@@ -1,4 +1,4 @@
-function [Ebest,tt,step,conf,state] = mem(vars,falgo,Esol,W,fRBM,T,conf,monitor)
+function [Ebest,tt,step,conf,state] = mem_oim(vars,falgo,Esol,W,fRBM,T,conf,monitor)
 
 % Monitor = [quiet, record, save] boolean (0/1 values)
 % Extract quiet and record boolean variables from monitor
@@ -79,8 +79,10 @@ if isempty(conf)
     if ~fRBM
 
     % Initialise spins at all vectors v in the lattice with random values -1 or 1
-    v = double(-1+2*round(rand(sz,'single')));
-    % v = -1+2*rand(sz,'single'); % ALEX MODIFICATION
+    % NOW CHANGE THIS TO BETWEEN -PI AND PI via phi = arccos(sigma) FOR OIM CHECK
+    % v = acos(double(-1+2*round(rand(sz,'single')))); % SAME AS PEI CASE BUT WITH PHASES
+    % v = acos(double(-1+2*round(rand(sz,'single')))) +0.1*(-1+2*rand(sz,'single')); % + SOME NOISE
+    v = acos(-1+2*rand(sz,'single')); % CHECK MAYBE A GRADIENT AT 0/PI ERROR THING
 
 
         % Bond based memory case
@@ -107,10 +109,10 @@ if isempty(conf)
     % RBM case - MAYBE - understand what this does later
     else
 
-        v = double(-1 + 2*round(rand([1 n+m],'single')));
-        X = xini*ones([n m],'single');
-        X = double(X.*logical(W)); 
-        Y = double(logical(W));
+        % v = double(-1 + 2*round(rand([1 n+m],'single')));
+        % X = xini*ones([n m],'single');
+        % X = double(X.*logical(W)); 
+        % Y = double(logical(W));
 
     end
 
@@ -168,6 +170,8 @@ if record
 
     %% Alex Extra Recording
     state.best_conf = zeros(sz);
+    state.confs = zeros([sz rrecs]);
+    state.confs_tlist = zeros([1 rrecs]);
 else
     state = 0; % If no recording, set state to 0
 end
@@ -199,8 +203,10 @@ for r = 1:nr
             end
 
             % Flip the spins in the list
+            % NOW WE WANT TO FLIP V NOT PHI SO WE WANT COS(PHI) --> -COS(PHI) FOR OIM
             if list
-                v(list) = -v(list);
+                v(list) = acos(-cos(v(list)));
+                % v(list) = -v(list);
             end
 
         end
@@ -217,8 +223,7 @@ for r = 1:nr
         % C matrix value (affects memory), 
         % G matrix value (affects continuised spins) 
         % from local gradient descent on Hamiltonian
-        % [E,C,G] = get_L_oim(v,X,W,fp,check,alpha,beta,fRBM);
-        [E,C,G] = get_L(v,X,W,fp,check,alpha,beta,fRBM);
+        [E,C,G] = get_L_oim(v,X,W,fp,check,alpha,beta,fRBM);
 
         % Update Ebest 
         % and flag (i.e. decide whether to break out of the loop for this restart after this time step or not)
@@ -232,12 +237,15 @@ for r = 1:nr
 
         % Adjust stepsize dt inversely proportional to the maximum absolute value of G (i.e. how fast continuised spin values v are changing)
         % With cutoffs at 2^-5 and 2^vars(8)
+        % TODO SHOULD MODIFY THIS BIT LATER
         dt = bound( 1/max(abs(G(:))) , dtlist);
 
         %%% UPDATE
 
         % Update continuised spins v but keep them within the range -1 to 1
-        v = min(max( v+dt*G ,-1),1);
+        % BUT MAYBE THIS DOESN'T MATTER FOR PHASES AS WILL USE COS LATER ANYWAY FOR OIM
+        v = v+dt*G;
+        % v = min(max( v+dt*G ,-1),1);
 
         % Non-RBM case
         if ~fRBM
@@ -268,6 +276,9 @@ for r = 1:nr
                 rrec = find(ttlist == floor(tt+dt),1,'first'); % Record index value (first index in ttlist equal to floor(tt+dt))
                 state.Et(rrec) = (Esol-E)/N; % Record energy (density) difference at this time
                 state.Eb(rrec) = -Ebest/N; % Record best energy (density) at this time
+
+                state.confs_tlist(rrec) = tt; % Record time at this time
+                state.confs(:,:,:,rrec) = v; % Record configuration at this time 
             end
 
             % If the restart number is in the record list rlist of restart values in which to record cluster values

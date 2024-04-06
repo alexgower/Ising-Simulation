@@ -37,7 +37,7 @@ else
 algo = 'ICM'; 
 end
 else
-algo = 'mem'; 
+algo = 'mem';
 end
 fname = strcat(fname,'_',algo);
 

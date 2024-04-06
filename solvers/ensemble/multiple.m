@@ -1,4 +1,4 @@
-function Ediff = multiple(vars,falgo,sz,flist,fRBM,runs,T,conf)
+function Ediff = multiple(vars,falgo,sz,flist,fRBM,runs,T,conf,oim)
 
 [falgo,algo,flist,~] = get_suffix(falgo,sz,flist,fRBM,vars);
 if isempty(conf)
@@ -18,6 +18,8 @@ elseif strcmp(algo,'ICM')
 Elist(run) = PTI(vars,Esol(run),W,fRBM,T,Inf,[],[1 0 0]);
 elseif strcmp(algo,'mem')
 Elist(run) = mem(vars,falgo,Esol(run),W,fRBM,T,[],[1 0 0]);
+elseif oim
+Elist(run) = mem_oim(vars,falgo,Esol(run),W,fRBM,T,[],[1 0 0]);
 end
 end
 Ediff = Esol-Elist;

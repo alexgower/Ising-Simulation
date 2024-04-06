@@ -1,15 +1,17 @@
 function [w,E,cost] = tiling_3d(n,m,k,flist)
 
-if flist == 10 % Special case of ferromagnetic Ising model (CHECK)
+    
+if flist == 10 % Special case of ferromagnetic Ising model
     w = ones(n,m,k,3);
     E = sum(w(:));
     cost = (sum(abs(w(:)))-E)/2;
     return;
 end
-if flist == 11 % Special case of fully frustrated Ising model MAYBE (CHECK)
-    cube = f6(); cube = permute(cube,[1 4 3 2]);
-    wcube = repmat(cube,[n m k 1]);
-    w = wp_to_w(wcube);
+if flist == 11 % Special case of fully frustrated (at least in Pei's definition of 'fully frustrated') Ising model - DOUBLE-CHECK
+    cube = f6(); % Get a 1x12 vector of edge value for the f6 subproblem
+    cube = permute(cube,[1 4 3 2]); % Change the matrix shape such that cube(:,:,1,i) = f6()(i)
+    wcube = repmat(cube,[n m k 1]); % Repeat this unit cube over all unit cubes C over all v in the lattice (THIS INCLUDES 'GAP UNIT CUBES')
+    w = wp_to_w(wcube); % NOTE THAT THIS FUNCTION WILL AUTOMATICALLY DELETE THE 'GAP UNIT CUBES' (i.e. cubes that are not actually used as subproblems)
     E = sum(w(:));
     cost = (sum(abs(w(:)))-E)/2;
     return;
@@ -63,6 +65,7 @@ wcube(:,:,:,:) = wcube(:,:,:,[1 4 9 7 2 10 3 6 12 5 8 11]);
 % ULTIAMTELY THIS FUNCTION TAKES A wpcube MATRIX (DEFINED AS 12 EDGE VALUES PER UNIT CUBE C DEFINED AT EACH V=(n,m,k) LATTICE SITE)
 % (BUT WITH 1-12 CONVENTION LABELS RE-ORDERED TO BE CONVENIENT FOR VERTEX COUPLINGS NOT SUBPROBLEM DEFINITIONS)
 % AND CONVERTS IT TO A w MATRIX (DEFINED AS 3 EDGE VALUES PER LATTICE SITE V=(n,m,k) IN THE RIGHT, BACK, UP DIRECTIONS (ETC)) 
+% By default we set check=0 and map=0
 w = wp_to_w(wcube,0,0);
 
 % The planted ground state energy is simply the sum of all the weights as all are satisfied by the ground state
