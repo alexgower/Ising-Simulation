@@ -1,4 +1,4 @@
-function [E,C,G] = get_L(v,X,W,fp,check,alpha,beta,fRBM)
+function [E,C,G] = get_L_pei(v,X,W,fp,check,alpha,beta,fRBM)
 
     % Non-RBM case
     if ~fRBM

@@ -1,4 +1,4 @@
-function [Ebest,tt,step,conf,state] = mem(vars,falgo,Esol,W,fRBM,T,conf,monitor)
+function [Ebest,tt,step,conf,state] = mem_pei(vars,falgo,Esol,W,fRBM,T,conf,monitor)
 
 % Monitor = [quiet, record, save] boolean (0/1 values)
 % Extract quiet and record boolean variables from monitor
@@ -218,7 +218,7 @@ for r = 1:nr
         % G matrix value (affects continuised spins) 
         % from local gradient descent on Hamiltonian
         % [E,C,G] = get_L_oim(v,X,W,fp,check,alpha,beta,fRBM);
-        [E,C,G] = get_L(v,X,W,fp,check,alpha,beta,fRBM);
+        [E,C,G] = get_L_pei(v,X,W,fp,check,alpha,beta,fRBM);
 
         % Update Ebest 
         % and flag (i.e. decide whether to break out of the loop for this restart after this time step or not)
