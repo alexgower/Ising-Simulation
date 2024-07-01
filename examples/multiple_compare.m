@@ -5,8 +5,8 @@ addpath(genpath('..'));
 %%% PROBLEM SET GENERATION %%%
 sz = [8 8 8]; % nxmxk 3D lattice
 flist = [0 0 0 0 1]; % tiling cube ratios (f21, f22, f41, f42, f6)
-number_of_problems = 100;
-parallel_processors = 4;
+number_of_problems = 50;
+parallel_processors = 50;
 
 Es_by_algorithm = zeros(number_of_problems, 11);
 
